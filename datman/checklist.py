@@ -35,7 +35,7 @@ class Checklist:
     The underlying YAMl document is expected to have the following format (but 
     may also have other sections): 
 
-        blacklist: 
+        ignore: 
             stage: 
                 series:
                 ...
@@ -52,22 +52,22 @@ class Checklist:
             self.data = yaml.load(stream) or tree()
 
         try:
-            self._blacklist = self.data['blacklist']
+            self._blacklist = self.data['ignore']
         except TypeError:
-            raise FormatError("node /blacklist is not a dict")
+            raise FormatError("node /ignore is not a dict")
 
     def blacklist(self, section, key, value=None):
         try:
             self._blacklist[section][key] = value
         except TypeError:
-            raise FormatError('node /blacklist/{}/{} is not a dict'.format(
+            raise FormatError('node /ignore/{}/{} is not a dict'.format(
                 section, value))
 
     def is_blacklisted(self, section, key):
         try:
             return section in self._blacklist and key in self._blacklist[section]
         except TypeError:
-            raise FormatError('node /blacklist/{}/{} is not a dict'.format(
+            raise FormatError('node /ignore/{}/{} is not a dict'.format(
                 section, key))
 
     def unblacklist(self, section, key):

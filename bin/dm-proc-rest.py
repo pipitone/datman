@@ -17,6 +17,7 @@ Arguments:
 
 Options:
     --tags LIST         DATMAN tags to run pipeline on. (comma delimited) [default: RST]
+    --checklist FILE    Checklist YAML file [default: <project>/metadata/checklist.yaml]
     -v,--verbose        Verbose logging
     --debug             Debug logging
 
@@ -61,6 +62,7 @@ logging.basicConfig(level=logging.WARN,
                     format="[%(name)s] %(levelname)s: %(message)s")
 logger = logging.getLogger(os.path.basename(__file__))
 
+STAGE_NAME = 'dm-proc-rest'  # checklist stage name
 
 class MissingDataException(Exception):
     pass
@@ -369,6 +371,7 @@ def main():
     script = arguments['<script>']
     atlas = arguments['<atlas>']
     subjects = arguments['<subject>']
+    checklistfile = arguments['--checklist'].replace('<project>',project)
     tags = arguments['--tags'].split(',')
     verbose = arguments['--verbose']
     debug = arguments['--debug']
@@ -395,7 +398,15 @@ def main():
     nii_path = os.path.join(project, 'data', 'nii')
     subjects = subjects or dm.utils.get_subjects(nii_path)
 
+    if not os.path.exists(checklistfile): 
+        checklistfile = None
+    checklist = dm.checklist.load(checklistfile)
+
     for subject in subjects:
+        if checklist.is_blacklisted(STAGE_NAME, subject): 
+            logger.info("Subject {} blacklisted. Skipping.".format(subject))
+            continue
+            
         if is_complete(project, subject):
             logger.info("Subject {} processed. Skipping.".format(subject))
             continue
