@@ -7,6 +7,19 @@ tree = lambda: collections.defaultdict(tree)
 yaml.add_representer(collections.defaultdict,
                      yaml.representer.Representer.represent_dict)
 
+def tree_load(stream, Loader=yaml.Loader):
+    class TreeLoader(Loader):
+        pass
+    def construct_mapping(loader, node):
+        data = tree()
+        data.update(loader.construct_pairs(node))
+        return data
+
+    TreeLoader.add_constructor(
+        yaml.resolver.BaseResolver.DEFAULT_MAPPING_TAG,
+        construct_mapping)
+    return yaml.load(stream, TreeLoader)
+
 
 class FormatError(Exception):
     """An exception thrown when the YAML document isn't formatted correctly"""
@@ -49,26 +62,27 @@ class Checklist:
         if not stream:
             self.data = tree()
         else:
-            self.data = yaml.load(stream) or tree()
+            self.data = tree_load(stream, yaml.SafeLoader) or tree()
+        
+        if not isinstance(self.data, dict):
+            raise FormatError("root node is not a dict")
 
-        try:
-            self._blacklist = self.data['blacklist']
-        except TypeError:
-            raise FormatError("node /blacklist is not a dict")
-
+        self._blacklist = self.data['blacklist']
+        
+        if not isinstance(self._blacklist, dict):
+            raise FormatError("node /blacklist does not contain a dict")
+    
     def blacklist(self, section, key, value=None):
-        try:
+        if not self.is_blacklisted(section, key): 
             self._blacklist[section][key] = value
-        except TypeError:
-            raise FormatError('node /blacklist/{}/{} is not a dict'.format(
-                section, value))
 
     def is_blacklisted(self, section, key):
-        try:
-            return section in self._blacklist and key in self._blacklist[section]
-        except TypeError:
-            raise FormatError('node /blacklist/{}/{} is not a dict'.format(
-                section, key))
+        _section = self._blacklist[section]
+
+        if not isinstance(_section, dict):
+            raise FormatError("/blacklist/{} does not contain dicts".format(section))
+
+        return key in self._blacklist[section]
 
     def unblacklist(self, section, key):
         try:
@@ -91,7 +105,6 @@ def load(stream_or_file=None):
     stream = stream_or_file
     if isinstance(stream_or_file, basestring):
         stream = open(stream_or_file, 'r')
-
     return Checklist(stream)
 
 def save(checklist, stream_or_file):
