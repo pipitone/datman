@@ -17,7 +17,7 @@ Arguments:
 
 Options:
     --tags LIST         DATMAN tags to run pipeline on. (comma delimited) [default: RST]
-    --checklist FILE    Checklist YAML file [default: <project>/metadata/checklist.yaml]
+    --checklist FILE    Checklist listing subjects/series to ignore
     -v,--verbose        Verbose logging
     --debug             Debug logging
 
