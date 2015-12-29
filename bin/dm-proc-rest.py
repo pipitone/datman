@@ -17,6 +17,7 @@ Arguments:
 
 Options:
     --tags LIST         DATMAN tags to run pipeline on. (comma delimited) [default: RST]
+    --checklist FILE    Checklist YAML file [default: <project>/metadata/checklist.yaml]
     -v,--verbose        Verbose logging
     --debug             Debug logging
 
@@ -61,6 +62,7 @@ logging.basicConfig(level=logging.WARN,
                     format="[%(name)s] %(levelname)s: %(message)s")
 logger = logging.getLogger(os.path.basename(__file__))
 
+STAGE_NAME = 'dm-proc-rest'  # checklist stage name
 
 class MissingDataException(Exception):
     pass
@@ -105,8 +107,6 @@ def partial_corr(C):
     Returns
     -------
     P : array-like, shape (p, p)
-        P[i, j] contains the partial correlation of C[:, i] and C[:, j] controlling
-        for the remaining variables in C.
     """
 
     C = np.asarray(C)
@@ -267,7 +267,7 @@ def is_complete(projectdir, subject):
     return os.path.isfile(complete_file)
 
 
-def get_required_data(projectdir, sub, tags):
+def get_required_data(projectdir, sub, tags, checklist):
     """Finds the necessary data for processing this subject. 
 
     If the necessary data can't be found, a MissingDataException is 
@@ -304,6 +304,17 @@ def get_required_data(projectdir, sub, tags):
     rest_data = [glob('{path}/{sub}/*_{tag}_*.nii.gz'.format(
         path=nii_path, sub=sub, tag=tag)) for tag in tags]
     rest_data = reduce(lambda x, y: x + y, rest_data)  # merge lists
+
+    def remove_blacklisted_scans(path):
+        basepath, ext = dm.utils.splitext(path)
+        stem = os.path.basename(basepath)
+        logger.debug("Looking in blacklist for {}".format(stem))
+        if checklist.is_blacklisted(STAGE_NAME, stem): 
+            logger.info("Scan {} blacklisted. Skipping.".format(path))
+            return False
+        return True
+
+    rest_data = filter(remove_blacklisted_scans, rest_data)
 
     if not rest_data:
         raise MissingDataException('No REST data found for ' + str(sub))
@@ -370,6 +381,7 @@ def main():
     atlas = arguments['<atlas>']
     subjects = arguments['<subject>']
     tags = arguments['--tags'].split(',')
+    checklistfile = arguments['--checklist']
     verbose = arguments['--verbose']
     debug = arguments['--debug']
 
@@ -395,7 +407,18 @@ def main():
     nii_path = os.path.join(project, 'data', 'nii')
     subjects = subjects or dm.utils.get_subjects(nii_path)
 
+    if checklistfile and not os.path.exists(checklistfile): 
+        logger.fatal('Checklist {} does not exist'.format(checklistfile))
+        sys.exit(1)
+
+    logger.debug('Using checklist: {}'.format(checklistfile))
+    checklist = dm.checklist.load(checklistfile)
+
     for subject in subjects:
+        if checklist.is_blacklisted(STAGE_NAME, subject): 
+            logger.info("Subject {} blacklisted. Skipping.".format(subject))
+            continue
+            
         if is_complete(project, subject):
             logger.info("Subject {} processed. Skipping.".format(subject))
             continue
@@ -405,7 +428,7 @@ def main():
             continue
 
         try:
-            data = get_required_data(project, subject, tags)
+            data = get_required_data(project, subject, tags, checklist)
         except MissingDataException, e:
             logger.error(e.message)
             continue

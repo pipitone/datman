@@ -95,6 +95,15 @@ def get_extension(path):
     else:
         return os.path.splitext(path)[1]
 
+def splitext(path): 
+    """Return the path excluding the extension, and the extension itself.
+   
+    See os.path.splitext for inspiration. 
+    """
+
+    ext = get_extension(path)
+    return path[:-len(ext)], ext
+
 def get_archive_headers(path, stop_after_first = False): 
     """
     Get dicom headers from a scan archive.
