@@ -12,7 +12,7 @@ Options:
     --datadir DIR           Parent folder to extract to [default: ./data]
     --exportinfo FILE       Table listing acquisitions to export by format
                             [default: ./metadata/exportinfo.csv]
-    --blacklist FILE        Table listing series to ignore
+    --checklist FILE        Checklist listing subjects/series to ignore
     -v, --verbose           Show intermediate steps
     --debug                 Show debug messages
     -n, --dry-run           Do nothing
@@ -123,6 +123,8 @@ import tempfile
 import glob
 import shutil
 
+STAGE_NAME = 'xnat-extract'  # checklist stage name
+
 DEBUG  = False
 VERBOSE= False
 DRYRUN = False
@@ -168,23 +170,26 @@ def main():
     archives       = arguments['<archivedir>']
     exportinfofile = arguments['--exportinfo']
     datadir        = arguments['--datadir']
-    blacklist      = arguments['--blacklist'] or []
+    checklistfile  = arguments['--checklist']
     VERBOSE        = arguments['--verbose']
     DEBUG          = arguments['--debug']
     DRYRUN         = arguments['--dry-run']
 
     exportinfo = pd.read_table(exportinfofile, sep='\s*', engine="python")
 
-    if blacklist: 
-        bl = pd.read_table(blacklist, sep='\s*', engine="python")
-        blacklist = bl["series"].tolist()
+    if checklistfile and not os.path.exists(checklistfile): 
+        error('Checklist {} does not exist'.format(checklistfile))
+        sys.exit(1)
+
+    debug('Using checklist: {}'.format(checklistfile))
+    checklist = dm.checklist.load(checklistfile)
 
     for archivepath in archives:
         verbose("Exporting {}".format(archivepath))
-        extract_archive(exportinfo, archivepath, datadir, blacklist)
+        extract_archive(exportinfo, archivepath, datadir, checklist)
 
 
-def extract_archive(exportinfo, archivepath, exportdir, blacklist):
+def extract_archive(exportinfo, archivepath, exportdir, checklist):
     """
     Exports an XNAT archive to various file formats.
 
@@ -227,13 +232,13 @@ def extract_archive(exportinfo, archivepath, exportdir, blacklist):
     stem  = str(scanid)
     for src, header in dm.utils.get_archive_headers(archivepath).items():
         export_series(exportinfo, src, header, fmts, timepoint, stem, 
-                exportdir, blacklist)
+                exportdir, checklist)
 
     # export non dicom resources
     export_resources(archivepath, exportdir, scanid)
 
 def export_series(exportinfo, src, header, formats, timepoint, stem, 
-        exportdir, blacklist):
+        exportdir, checklist):
     """
     Exports the given DICOM folder into the given formats.
     """
@@ -261,7 +266,7 @@ def export_series(exportinfo, src, header, formats, timepoint, stem,
     # update the filestem with _tag_series_description
     stem  += "_" + "_".join([tag,series,mangled_descr]) 
 
-    if blacklist and stem in blacklist:
+    if checklist.is_blacklisted(STAGE_NAME, stem):
         debug("{} in blacklist. Skipping.".format(stem))
         return 
 
